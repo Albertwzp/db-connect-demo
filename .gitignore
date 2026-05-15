@@ -1,0 +1,11 @@
+# Binary
+bin/
+
+# Go build
+*.exe
+*.dll
+*.so
+*.test
+
+# IDE
+.vscode/
