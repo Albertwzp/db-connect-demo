@@ -46,11 +46,12 @@ func main() {
 		os.Exit(2)
 	}
 
-	// register backends
+	// register backends (non-fatal: record failures and continue)
 	for name, s := range specs {
 		if err := lib.RegisterBackend(name, s.Driver, s.DSN); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to register backend %s: %v\n", name, err)
-			os.Exit(1)
+			fmt.Fprintf(os.Stderr, "warning: failed to register backend %s: %v\n", name, err)
+			lib.MarkBackendFailed(name, err)
+			continue
 		}
 	}
 	defer lib.CloseAllBackends()
