@@ -62,6 +62,11 @@ go build -o db-bench.exe
 ./db-bench.exe -backends-file=backends.json -port=8080
 ```
 
+打开 UI：
+
+访问 http://localhost:8080/ui 来打开内置的最小 React 前端（或访问 /ui 以在浏览器中打开）。
+
+
 ## HTTP API 示例
 
 - GET /ping

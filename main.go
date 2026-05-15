@@ -58,6 +58,11 @@ func main() {
 
 	r := gin.Default()
 
+	// serve minimal React UI at /ui (frontend.html)
+	r.StaticFile("/ui", "frontend.html")
+	// root redirect to UI
+	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/ui") })
+
 	r.GET("/ping", func(c *gin.Context) {
 		res := lib.HealthAll(context.Background())
 		c.JSON(http.StatusOK, res)
@@ -81,7 +86,7 @@ func main() {
 	})
 
 	addr := ":" + *port
-	fmt.Println("starting server on", addr)
+	fmt.Println("starting server on", addr, "(UI at /ui)")
 	if err := r.Run(addr); err != nil {
 		fmt.Fprintln(os.Stderr, "server error:", err)
 		os.Exit(1)

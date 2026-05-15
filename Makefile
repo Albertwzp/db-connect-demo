@@ -27,7 +27,7 @@ test-build:
 
 # Run service with backends file (set BACKENDS and PORT as needed)
 run-service: build
-	@echo "starting service with backends=$(BACKENDS) port=$(PORT)"
+	@echo "starting service with backends=$(BACKENDS) port=$(PORT) - UI at http://localhost:$(PORT)/ui"
 	$(BIN) -backends-file=$(BACKENDS) -port=$(PORT)
 
 # Example run targets (override DSN by providing DSN variable)
