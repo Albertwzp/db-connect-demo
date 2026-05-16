@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>db-connect-demo UI (Minimal React)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;margin:16px}
+    .backend{padding:8px;border:1px solid #ddd;margin:6px 0;border-radius:4px}
+    .ok{color:green}
+    .err{color:red}
+    pre{background:#f7f7f7;padding:8px;border-radius:4px}
+  </style>
+</head>
+<body>
+  <h2>db-connect-demo — Minimal React UI</h2>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM + Babel (dev, CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+  <script type="text/babel">
+    const {useState, useEffect} = React;
+
+    function App(){
+      const [status, setStatus] = useState({});
+      const [loading, setLoading] = useState(false);
+      const [backend, setBackend] = useState('');
+      const [query, setQuery] = useState('SELECT 1');
+      const [result, setResult] = useState(null);
+      const [error, setError] = useState(null);
+
+      const fetchPing = async ()=>{
+        setLoading(true);
+        try{
+          const r = await fetch('/ping');
+          const j = await r.json();
+          setStatus(j);
+          // set default backend
+          const keys = Object.keys(j);
+          if(keys.length && !backend) setBackend(keys[0]);
+        }catch(e){
+          setError('failed to fetch /ping: '+e.message);
+        }finally{setLoading(false)}
+      }
+
+      useEffect(()=>{ fetchPing(); },[]);
+
+      const doQuery = async (ev)=>{
+        ev && ev.preventDefault();
+        setError(null); setResult(null);
+        if(!backend){ setError('choose backend'); return }
+        setLoading(true);
+        try{
+          const r = await fetch('/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({backend,query})});
+          const j = await r.json();
+          if(!r.ok){ setError(j.error||JSON.stringify(j)) }
+          else { setResult(j.rows || j) }
+        }catch(e){ setError('request failed: '+e.message) }
+        setLoading(false);
+      }
+
+      return (<div>
+        <div style={{display:'flex',gap:20}}>
+          <div style={{flex:1}}>
+            <h3>/ping (backends)</h3>
+            <button onClick={fetchPing} disabled={loading}>Refresh</button>
+            {loading && <span> Loading...</span>}
+            <div>
+              {Object.keys(status).length===0 && <p>No backends registered (or server unreachable).</p>}
+              {Object.entries(status).map(([k,v])=> (
+                <div key={k} className="backend">
+                  <strong>{k}</strong>: {typeof v === 'string' ? (
+                    v === 'ok' ? <span className='ok'>ok</span> : <span className='err'>{v}</span>
+                    ) : <pre>{JSON.stringify(v)}</pre>}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{flex:1}}>
+            <h3>/query</h3>
+            <form onSubmit={doQuery}>
+              <div style={{marginBottom:8}}>
+                <label>Backend: </label>
+                <select value={backend} onChange={e=>setBackend(e.target.value)}>
+                  {Object.keys(status).map(k=> <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
+              <div style={{marginBottom:8}}>
+                <label>Query:</label><br/>
+                <textarea rows={4} style={{width:'100%'}} value={query} onChange={e=>setQuery(e.target.value)} />
+              </div>
+              <div>
+                <button type="submit" disabled={loading}>Execute</button>
+                <button type="button" onClick={()=>{setQuery('SELECT 1')}} style={{marginLeft:8}}>Reset</button>
+              </div>
+            </form>
+            <div style={{marginTop:12}}>
+              {error && <div className='err'><strong>Error:</strong> {String(error)}</div>}
+              {result && <div>
+                <h4>Result</h4>
+                <pre>{JSON.stringify(result, null, 2)}</pre>
+              </div>}
+            </div>
+          </div>
+        </div>
+      </div>);
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
