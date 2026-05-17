@@ -26,7 +26,33 @@ test-build:
 	GOOS=linux GOARCH=amd64 go build -o db-bench-linux
 
 # Run service with backends file (set BACKENDS and PORT as needed)
-run-service: build
+ui-build:
+	@if [ -d frontend ]; then \
+		echo "building frontend..."; \
+		cd frontend && \
+		if command -v npm >/dev/null 2>&1; then \
+			if [ -f package-lock.json ]; then \
+				npm ci; \
+			elif [ -f yarn.lock ]; then \
+				yarn install; \
+			else \
+				npm install; \
+			fi; \
+			npm run build; \
+		elif command -v yarn >/dev/null 2>&1; then \
+			yarn install && yarn build; \
+		else \
+			echo "npm/yarn not found, skipping frontend build"; \
+		fi; \
+		cd - >/dev/null; \
+	else \
+		echo "frontend dir not found, skipping"; \
+	fi
+
+ui-clean:
+	@if [ -d frontend/dist ]; then rm -rf frontend/dist; else if exist frontend\dist rmdir /S /Q frontend\dist; fi; fi
+
+run-service: build ui-build
 	@echo "starting service with backends=$(BACKENDS) port=$(PORT) - UI at http://localhost:$(PORT)/ui"
 	$(BIN) -backends-file=$(BACKENDS) -port=$(PORT)
 
