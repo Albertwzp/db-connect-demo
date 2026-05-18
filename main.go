@@ -1,67 +1,92 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	dbv1 "db-connect-demo/api/v1"
+	"db-connect-demo/controllers"
 	"db-connect-demo/lib"
 
 	"github.com/gin-gonic/gin"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
-type BackendSpec struct {
-	Driver string `json:"driver"`
-	DSN    string `json:"dsn"`
+var (
+	scheme = runtime.NewScheme()
+)
+
+func init() {
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(dbv1.AddToScheme(scheme))
 }
 
 func main() {
 	port := flag.String("port", "8080", "http server port")
-	backendsFile := flag.String("backends-file", "", "path to json file defining backends map[name]={driver,dsn}")
-	backendsJSON := flag.String("backends", "", "json map of backends as inline string")
+	metricsAddr := flag.String("metrics-bind-address", ":8081", "metrics bind address")
+	healthProbeAddr := flag.String("health-probe-bind-address", ":8082", "health probe bind address")
+	leaderElect := flag.Bool("leader-elect", false, "enable leader election for controller manager")
 	flag.Parse()
 
-	var specs map[string]BackendSpec
-	if *backendsFile != "" {
-		b, err := ioutil.ReadFile(*backendsFile)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "failed to read backends file:", err)
-			os.Exit(2)
-		}
-		if err := json.Unmarshal(b, &specs); err != nil {
-			fmt.Fprintln(os.Stderr, "failed to parse backends file:", err)
-			os.Exit(2)
-		}
-	} else if *backendsJSON != "" {
-		if err := json.Unmarshal([]byte(*backendsJSON), &specs); err != nil {
-			fmt.Fprintln(os.Stderr, "failed to parse backends json:", err)
-			os.Exit(2)
-		}
-	} else {
-		fmt.Fprintln(os.Stderr, "no backends specified; use -backends-file or -backends")
-		os.Exit(2)
+	// Create manager
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Scheme:                 scheme,
+		Metrics:                server.Options{BindAddress: *metricsAddr},
+		HealthProbeBindAddress: *healthProbeAddr,
+		LeaderElection:         *leaderElect,
+		LeaderElectionID:       "db-connect-demo.local",
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "unable to start manager:", err)
+		os.Exit(1)
 	}
 
-	// register backends (non-fatal: record failures and continue)
-	for name, s := range specs {
-		if err := lib.RegisterBackend(name, s.Driver, s.DSN); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to register backend %s: %v\n", name, err)
-			lib.MarkBackendFailed(name, err)
-			continue
-		}
+	// Register Reconcilers
+	if err := (&controllers.PostgreSQLConnectionReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}).SetupWithManager(mgr); err != nil {
+		fmt.Fprintln(os.Stderr, "unable to create PostgreSQL controller:", err)
+		os.Exit(1)
 	}
-	defer lib.CloseAllBackends()
+	if err := (&controllers.MySQLConnectionReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}).SetupWithManager(mgr); err != nil {
+		fmt.Fprintln(os.Stderr, "unable to create MySQL controller:", err)
+		os.Exit(1)
+	}
+	if err := (&controllers.SQLiteConnectionReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}).SetupWithManager(mgr); err != nil {
+		fmt.Fprintln(os.Stderr, "unable to create SQLite controller:", err)
+		os.Exit(1)
+	}
+	if err := (&controllers.KafkaConnectionReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}).SetupWithManager(mgr); err != nil {
+		fmt.Fprintln(os.Stderr, "unable to create Kafka controller:", err)
+		os.Exit(1)
+	}
+	if err := (&controllers.SolaceConnectionReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}).SetupWithManager(mgr); err != nil {
+		fmt.Fprintln(os.Stderr, "unable to create Solace controller:", err)
+		os.Exit(1)
+	}
 
+	// Start manager in background
+	ctx := ctrl.SetupSignalHandler()
+	go func() {
+		if err := mgr.Start(ctx); err != nil {
+			fmt.Fprintln(os.Stderr, "manager exited non-zero:", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Start Gin API server
 	r := gin.Default()
 
-	// API routes first (avoid conflicts with wildcard static routes)
+	// API routes: read backends from in-memory lib registry populated by Reconcilers
 	r.GET("/ping", func(c *gin.Context) {
-		res := lib.HealthAll(context.Background())
+		res := lib.HealthAll(c.Request.Context())
 		c.JSON(http.StatusOK, res)
 	})
 
@@ -74,7 +99,7 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		rows, err := lib.QueryBackend(context.Background(), req.Backend, req.Query)
+		rows, err := lib.QueryBackend(c.Request.Context(), req.Backend, req.Query)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -82,12 +107,9 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"rows": rows})
 	})
 
-	// Serve UI: prefer built frontend (frontend/dist), fallback to single-file frontend.html
+	// Serve UI
 	if _, err := os.Stat("frontend/dist/index.html"); err == nil {
-		// Serve static files under /ui to avoid registering a root-level wildcard that
-		// would conflict with API routes. Vite assets will be available at /ui/assets/...
 		r.Static("/ui", "frontend/dist")
-		// SPA fallback for paths under /ui
 		r.NoRoute(func(c *gin.Context) {
 			p := c.Request.URL.Path
 			if strings.HasPrefix(p, "/ui") || p == "/" {
@@ -98,14 +120,18 @@ func main() {
 		})
 	} else {
 		r.StaticFile("/ui", "frontend.html")
-		// root redirect to UI when only single-file UI exists
 		r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/ui") })
 	}
 
 	addr := ":" + *port
-	fmt.Println("starting server on", addr, "(UI at /ui)")
+	fmt.Println("starting API server on", addr, "(UI at /ui)")
+
+	// Run server (blocking)
 	if err := r.Run(addr); err != nil {
 		fmt.Fprintln(os.Stderr, "server error:", err)
+		// allow manager goroutine to exit via signal
+		// give it a moment to shutdown
+		time.Sleep(1 * time.Second)
 		os.Exit(1)
 	}
 }

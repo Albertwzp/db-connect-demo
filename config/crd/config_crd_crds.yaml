@@ -1,0 +1,240 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: postgresqlconnections.db.connect.local
+spec:
+  group: db.connect.local
+  names:
+    kind: PostgreSQLConnection
+    plural: postgresqlconnections
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            type: object
+            required: ["host", "username", "password", "database"]
+            properties:
+              host:
+                type: string
+                description: "PostgreSQL host"
+              port:
+                type: integer
+                minimum: 1
+                maximum: 65535
+                default: 5432
+                description: "PostgreSQL port (default: 5432)"
+              username:
+                type: string
+                description: "PostgreSQL username"
+              password:
+                type: string
+                description: "PostgreSQL password"
+              database:
+                type: string
+                description: "PostgreSQL database name"
+          status:
+            type: object
+            properties:
+              connected:
+                type: boolean
+              error:
+                type: string
+              lastProbeTime:
+                type: string
+                format: date-time
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    observedGeneration:
+                      type: integer
+    subresources:
+      status: {}
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mysqlconnections.db.connect.local
+spec:
+  group: db.connect.local
+  names:
+    kind: MySQLConnection
+    plural: mysqlconnections
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required: ["host", "username", "password", "database"]
+            properties:
+              host:
+                type: string
+              port:
+                type: integer
+                minimum: 1
+                maximum: 65535
+                default: 3306
+              username:
+                type: string
+              password:
+                type: string
+              database:
+                type: string
+          status:
+            type: object
+            properties:
+              connected:
+                type: boolean
+              error:
+                type: string
+              lastProbeTime:
+                type: string
+                format: date-time
+              conditions:
+                type: array
+                items:
+                  type: object
+    subresources:
+      status: {}
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: sqliteconnections.db.connect.local
+spec:
+  group: db.connect.local
+  names:
+    kind: SQLiteConnection
+    plural: sqliteconnections
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required: ["filePath"]
+            properties:
+              filePath:
+                type: string
+          status:
+            type: object
+            properties:
+              connected:
+                type: boolean
+              error:
+                type: string
+    subresources:
+      status: {}
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kafkaconnections.db.connect.local
+spec:
+  group: db.connect.local
+  names:
+    kind: KafkaConnection
+    plural: kafkaconnections
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required: ["brokers"]
+            properties:
+              brokers:
+                type: array
+                items:
+                  type: string
+          status:
+            type: object
+            properties:
+              connected:
+                type: boolean
+              error:
+                type: string
+    subresources:
+      status: {}
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: solaceconnections.db.connect.local
+spec:
+  group: db.connect.local
+  names:
+    kind: SolaceConnection
+    plural: solaceconnections
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required: ["brokerURL"]
+            properties:
+              brokerURL:
+                type: string
+              username:
+                type: string
+              password:
+                type: string
+          status:
+            type: object
+            properties:
+              connected:
+                type: boolean
+              error:
+                type: string
+    subresources:
+      status: {}
