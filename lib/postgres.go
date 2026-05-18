@@ -78,18 +78,28 @@ func (p *PostgresDriver) HealthCheck(ctx context.Context) error {
 }
 
 func (p *PostgresDriver) Query(ctx context.Context, query string) ([]map[string]interface{}, error) {
-	if p.db == nil { return nil, errors.New("db not open") }
+	if p.db == nil {
+		return nil, errors.New("db not open")
+	}
 	rows, err := p.db.QueryContext(ctx, query)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	cols, err := rows.Columns()
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	results := []map[string]interface{}{}
 	for rows.Next() {
 		vals := make([]interface{}, len(cols))
 		ptrs := make([]interface{}, len(cols))
-		for i := range vals { ptrs[i] = &vals[i] }
-		if err := rows.Scan(ptrs...); err != nil { return nil, err }
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
 		row := make(map[string]interface{})
 		for i, c := range cols {
 			v := vals[i]

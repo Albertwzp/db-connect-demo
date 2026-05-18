@@ -1,11 +1,3 @@
-# Makefile for db-bench
-
-BIN ?= ./db-bench.exe
-PORT ?= 8080
-BACKENDS ?= backends.json
-
-.PHONY: all tidy build clean test-build run-service run-postgres run-mysql run-sqlite run-kafka run-solace help
-
 all: build
 
 tidy:
@@ -13,70 +5,96 @@ tidy:
 	go mod tidy
 
 build:
-	@echo "building db-bench..."
-	go build -o $(BIN)
+	@echo "building single binary..."
+	go build -o db-connect-demo
 
 clean:
-	@echo "cleaning..."
-	@if [ -f $(BIN) ]; then rm -f $(BIN); else if exist $(BIN) del /Q $(BIN); fi; fi
+	@rm -f db-connect-demo
+	@rm -rf frontend/dist
+	@echo "✓ Cleaned"
 
-# cross-build example
-test-build:
-	@echo "building linux binary..."
-	GOOS=linux GOARCH=amd64 go build -o db-bench-linux
+# Clean extra files created during development
+cleanup:
+	@echo "Removing development files..."
+	@rm -f operator_main.go init_dirs.go test_operator.sh deploy.sh validate.go cleanup.go backends.json db-bench.exe README_NEW.md
+	@echo "✓ Cleanup complete"
 
-# Run service with backends file (set BACKENDS and PORT as needed)
 ui-build:
 	@if [ -d frontend ]; then \
 		echo "building frontend..."; \
 		cd frontend && \
-		if command -v npm >/dev/null 2>&1; then \
-			if [ -f package-lock.json ]; then \
-				npm ci; \
-			elif [ -f yarn.lock ]; then \
-				yarn install; \
-			else \
-				npm install; \
-			fi; \
-			npm run build; \
-		elif command -v yarn >/dev/null 2>&1; then \
-			yarn install && yarn build; \
-		else \
-			echo "npm/yarn not found, skipping frontend build"; \
-		fi; \
-		cd - >/dev/null; \
+		if [ ! -d node_modules ]; then npm install; fi && \
+		npm run build && \
+		cd ..; \
 	else \
-		echo "frontend dir not found, skipping"; \
+		echo "frontend dir not found"; \
 	fi
 
 ui-clean:
-	@if [ -d frontend/dist ]; then rm -rf frontend/dist; else if exist frontend\dist rmdir /S /Q frontend\dist; fi; fi
+	@rm -rf frontend/dist
+	@echo "✓ Frontend cleaned"
 
-run-service: build ui-build
-	@echo "starting service with backends=$(BACKENDS) port=$(PORT) - UI at http://localhost:$(PORT)/ui"
-	$(BIN) -backends-file=$(BACKENDS) -port=$(PORT)
+# Standalone mode (no K8s required)
+run: build ui-build
+	@echo "Starting combined Operator+API server on port 8080"
+	@echo "UI: http://localhost:8080/ui"
+	@echo "API: http://localhost:8080/ping"
+	./db-connect-demo -port=8080
 
-# Example run targets (override DSN by providing DSN variable)
-run-postgres: build
-	@echo "running against Postgres"
-	$(BIN) -driver=postgres -dsn="$(DSN)"
+# Kubernetes deployment
+k8s-install:
+	@echo "Installing CRD..."
+	kubectl apply -f config/crd/config_crd_crds.yaml
+	@echo "✓ CRDs installed"
 
-run-mysql: build
-	@echo "running against MySQL"
-	$(BIN) -driver=mysql -dsn="$(DSN)"
+k8s-rbac:
+	@echo "Installing RBAC..."
+	kubectl apply -f config/rbac/config_rbac_rbac.yaml
+	@echo "✓ RBAC configured"
 
-run-sqlite: build
-	@echo "running against SQLite (in-memory)"
-	$(BIN) -driver=sqlite -dsn="$(DSN)"
+k8s-deploy: build docker-build k8s-install k8s-rbac
+	@echo "Deploying Operator and API Server..."
+	kubectl apply -f config/manager/config_manager_deployment.yaml
+	@echo "✓ Deployed"
 
-run-kafka: build
-	@echo "running Kafka producer"
-	$(BIN) -driver=kafka -dsn="$(DSN)"
+k8s-samples:
+	@echo "Creating sample connections..."
+	kubectl apply -f config/samples/config_samples_connections.yaml
+	@echo "✓ Samples created"
 
-run-solace: build
-	@echo "running Solace via MQTT"
-	$(BIN) -driver=solace -dsn="$(DSN)"
+k8s-uninstall:
+	@echo "Uninstalling..."
+	kubectl delete -f config/manager/config_manager_deployment.yaml --ignore-not-found
+	kubectl delete -f config/rbac/config_rbac_rbac.yaml --ignore-not-found
+	kubectl delete -f config/crd/config_crd_crds.yaml --ignore-not-found
+	@echo "✓ Uninstalled"
+
+# Docker
+docker-build: build
+	@echo "Building Docker image..."
+	docker build -t db-connect-demo:latest .
+
+docker-push:
+	@echo "Pushing Docker image..."
+	docker push db-connect-demo:latest
 
 help:
-	@echo "Available targets: all tidy build clean test-build run-service run-postgres run-mysql run-sqlite run-kafka run-solace"
-	@echo "Examples: make run-postgres DSN='postgres://user:pass@localhost:5432/db?sslmode=disable'"
+	@echo "db-connect-demo - Combined Operator + API Server"
+	@echo ""
+	@echo "Standalone mode (no K8s required):"
+	@echo "  make run       - Build and run combined service"
+	@echo "  make build     - Build binary only"
+	@echo ""
+	@echo "Kubernetes mode:"
+	@echo "  make k8s-deploy     - Deploy to K8s cluster"
+	@echo "  make k8s-samples    - Create sample connections"
+	@echo "  make k8s-uninstall  - Remove from K8s"
+	@echo ""
+	@echo "Build:"
+	@echo "  make ui-build  - Build React frontend"
+	@echo "  make tidy      - Sync Go dependencies"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make clean     - Remove build artifacts"
+	@echo "  make cleanup   - Remove development files"
+	@echo "  make ui-clean  - Remove frontend dist"

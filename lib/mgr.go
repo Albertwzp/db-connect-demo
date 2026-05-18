@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	backends      = map[string]Driver{}
+	backends       = map[string]Driver{}
 	failedBackends = map[string]string{}
 )
 
@@ -17,8 +17,12 @@ func RegisterBackend(name, driverName, dsn string) error {
 		return fmt.Errorf("backend already registered: %s", name)
 	}
 	drv, err := NewDriver(driverName)
-	if err != nil { return err }
-	if err := drv.Open(dsn); err != nil { return err }
+	if err != nil {
+		return err
+	}
+	if err := drv.Open(dsn); err != nil {
+		return err
+	}
 	backends[name] = drv
 	return nil
 }
@@ -50,8 +54,20 @@ func QueryBackend(ctx context.Context, name, query string) ([]map[string]interfa
 		return nil, fmt.Errorf("backend %s registration failed: %s", name, why)
 	}
 	d, ok := backends[name]
-	if !ok { return nil, fmt.Errorf("backend not found: %s", name) }
+	if !ok {
+		return nil, fmt.Errorf("backend not found: %s", name)
+	}
 	return d.Query(ctx, query)
+}
+
+// CloseBackend closes and removes a specific backend
+func CloseBackend(name string) error {
+	if d, ok := backends[name]; ok {
+		d.Close()
+		delete(backends, name)
+	}
+	delete(failedBackends, name)
+	return nil
 }
 
 func CloseAllBackends() {

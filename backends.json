@@ -1,7 +1,0 @@
-{
-  "pg1": {"driver": "postgres", "dsn": "postgres://user:pass@localhost:5432/dbname?sslmode=disable"},
-  "mysql1": {"driver": "mysql", "dsn": "user:pass@tcp(localhost:3306)/dbname"},
-  "sqlite1": {"driver": "sqlite", "dsn": "file::memory:?cache=shared"},
-  "kafka1": {"driver": "kafka", "dsn": "localhost:9092"},
-  "solace1": {"driver": "solace", "dsn": "tcp://broker-host:1883?clientid=bench1"}
-}
