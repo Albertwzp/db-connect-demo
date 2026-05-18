@@ -2,15 +2,16 @@
 
 ## 简介
 
-轻量级负载测试与演示工具，支持多种后端驱动（可通过 lib 包注册）：Postgres、MySQL、SQLite、Kafka、Solace（基于 MQTT）。工具既可作为命令行程序运行压力测试，也可作为 HTTP 服务动态管理多个后端实例。
+轻量级负载测试与演示工具，支持多种后端驱动（通过 lib 包注册）：Postgres、MySQL、SQLite、Kafka、Solace（基于 MQTT）。工具既可作为命令行程序运行压力测试，也可作为 HTTP 服务动态管理多个后端实例并暴露交互式 Web UI。
 
 ## 主要功能
 
-- 驱动：postgres、mysql、sqlite、kafka、solace（MQTT）
-- 动态注册后端并启动：通过 JSON 文件或命令行传入后端字典
+- 多驱动支持：postgres、mysql、sqlite、kafka、solace（MQTT）
+- 动态注册后端并统一管理（通过 JSON 文件或启动参数传入后端字典）
 - HTTP API（Gin）：
-  - GET /ping — 返回已注册后端 health（"ok" 或错误信息）
+  - GET /ping — 返回已注册后端健康信息（"ok" 或错误信息）
   - POST /query — 输入 {"backend":"name","query":"..."}，返回查询结果（消息驱动返回不支持查询）
+- 可选前端（React + Vite + Bootstrap），构建产物位于 frontend/dist，服务在 /ui
 
 ## 驱动示例 DSN
 
@@ -36,13 +37,39 @@
 
 ## 构建
 
+后端（Go）依赖与构建：
+
 ```bash
 go mod tidy
 go build -o db-bench.exe
 ```
 
-> Windows: 在 PowerShell 中可运行 `.
-\db-bench.exe`；在 Unix-like 系统运行 `./db-bench.exe`（或交叉编译为 linux 可执行文件）。
+前端（可选，使用 Node.js + npm/yarn）：
+
+```bash
+cd frontend
+npm ci           # 或 yarn
+npm run build     # 生成 frontend/dist
+```
+
+Makefile 的 `run-service` 目标会在启动前尝试构建 frontend（若本机可用 npm）。
+
+> 提示：请确保安装了 Node.js（推荐 16+）和 npm/yarn 以构建前端。
+
+## 开发模式（并行运行前后端）
+
+- 后端：
+  ```bash
+  go run main.go -backends-file=backends.json -port=8080
+  ```
+- 前端（开发服务器）：
+  ```bash
+  cd frontend
+  npm install
+  npm run dev     # Vite dev server，默认 5173
+  ```
+
+在开发模式下可通过 Vite 代理或手动配置 CORS 将前端请求代理到后端。
 
 ## 运行（作为服务）
 
@@ -51,23 +78,26 @@ go build -o db-bench.exe
 ```json
 {
   "pg1": {"driver":"postgres","dsn":"postgres://user:pass@localhost:5432/db?sslmode=disable"},
-  "k1": {"driver":"kafka","dsn":"localhost:9092"},
-  "s1": {"driver":"solace","dsn":"tcp://broker:1883?clientid=bench1"}
+  "mysql1": {"driver":"mysql","dsn":"user:pass@tcp(localhost:3306)/dbname"},
+  "kafka1": {"driver":"kafka","dsn":"localhost:9092"},
+  "solace1": {"driver":"solace","dsn":"tcp://broker:1883?clientid=bench1"}
 }
 ```
 
-启动服务：
+启动已构建服务并访问 UI：
 
 ```bash
 ./db-bench.exe -backends-file=backends.json -port=8080
+# 浏览器访问 http://localhost:8080/ui
 ```
 
-打开 UI：
+或者使用 Makefile：
 
-访问 http://localhost:8080/ui 来打开内置的最小 React 前端（或访问 /ui 以在浏览器中打开）。
+```bash
+make run-service BACKENDS=backends.json PORT=8080
+```
 
-
-## HTTP API 示例
+## API 示例
 
 - GET /ping
 
@@ -83,18 +113,13 @@ curl -X POST -H "Content-Type: application/json" \
   http://localhost:8080/query
 ```
 
-## Makefile
+## 常见问题与提示
 
-仓库包含 Makefile，常用目标：
-
-- `make tidy` — 同步模块
-- `make build` — 本地构建
-- `make test-build` — 交叉构建示例
-- `make run-service BACKENDS=backends.json PORT=8080` — 启动服务
-- `make run-postgres DSN="..."` 等运行示例目标（请编辑或覆盖 DSN）
-
-## 备注
-
+- 若某些后端（例如 Kafka、Solace）在启动时无法连接，服务会记录为 warning 并继续运行，/ping 会展示失败原因；对这些后端的 /query 将返回注册失败的错误信息。
 - SQLite 在 Windows 上需要启用 CGO（安装 MinGW/MSYS2）；
-- Solace 驱动使用 MQTT（paho）实现发布；如需使用 Solace 官方 SDK，请提供 SDK 详情以实现替代驱动。
+- 若需 Solace 的专有 API（非 MQTT），请提供官方 SDK 信息以便集成。
+
+## 贡献
+
+欢迎通过 PR 添加更多驱动、示例和改进文档。
 

@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 
 	"db-connect-demo/lib"
 
@@ -58,11 +59,7 @@ func main() {
 
 	r := gin.Default()
 
-	// serve minimal React UI at /ui (frontend.html)
-	r.StaticFile("/ui", "frontend.html")
-	// root redirect to UI
-	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/ui") })
-
+	// API routes first (avoid conflicts with wildcard static routes)
 	r.GET("/ping", func(c *gin.Context) {
 		res := lib.HealthAll(context.Background())
 		c.JSON(http.StatusOK, res)
@@ -84,6 +81,26 @@ func main() {
 		}
 		c.JSON(http.StatusOK, gin.H{"rows": rows})
 	})
+
+	// Serve UI: prefer built frontend (frontend/dist), fallback to single-file frontend.html
+	if _, err := os.Stat("frontend/dist/index.html"); err == nil {
+		// Serve static files under /ui to avoid registering a root-level wildcard that
+		// would conflict with API routes. Vite assets will be available at /ui/assets/...
+		r.Static("/ui", "frontend/dist")
+		// SPA fallback for paths under /ui
+		r.NoRoute(func(c *gin.Context) {
+			p := c.Request.URL.Path
+			if strings.HasPrefix(p, "/ui") || p == "/" {
+				c.File("frontend/dist/index.html")
+				return
+			}
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		})
+	} else {
+		r.StaticFile("/ui", "frontend.html")
+		// root redirect to UI when only single-file UI exists
+		r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/ui") })
+	}
 
 	addr := ":" + *port
 	fmt.Println("starting server on", addr, "(UI at /ui)")
