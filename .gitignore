@@ -11,4 +11,4 @@ bin/
 .vscode/
 
 node_modules/
-db-connect-demo
+db-connect-demo*

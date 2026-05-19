@@ -8,8 +8,18 @@ build:
 	@echo "building single binary..."
 	go build -o db-connect-demo
 
+# Cross-compile for Linux amd64 (requires CGO_ENABLED=0 for cross-compilation without a Linux cross-compiler toolchain)
+# NOTE: CGO_ENABLED=0 disables sqlite3 support (mattn/go-sqlite3 requires CGO).
+#       To build with full sqlite3 support for Linux, set CGO_ENABLED=1 and provide
+#       a cross-compiler via CC=x86_64-linux-gnu-gcc, or build natively on Linux.
+build-linux:
+	@echo "cross-compiling for linux/amd64..."
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -a -ldflags="-w -s" -o db-connect-demo-linux
+	@echo "✓ Built db-connect-demo-linux"
+
 clean:
 	@rm -f db-connect-demo
+	@rm -f db-connect-demo-linux
 	@rm -rf frontend/dist
 	@echo "✓ Cleaned"
 
@@ -84,6 +94,7 @@ help:
 	@echo "Standalone mode (no K8s required):"
 	@echo "  make run       - Build and run combined service"
 	@echo "  make build     - Build binary only"
+	@echo "  make build-linux - Cross-compile for linux/amd64"
 	@echo ""
 	@echo "Kubernetes mode:"
 	@echo "  make k8s-deploy     - Deploy to K8s cluster"
